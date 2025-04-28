@@ -1,0 +1,12 @@
+{
+  "required": true,
+  "package": "com.shariyl.kafra.mixin",
+  "compatibilityLevel": "JAVA_21",
+  "mixins": [
+    "KafraAfterTradeMixin",
+    "KafraServicesNamingMixin"
+  ],
+  "injectors": {
+    "defaultRequire": 1
+	}
+}
