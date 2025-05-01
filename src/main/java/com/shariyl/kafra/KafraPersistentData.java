@@ -34,6 +34,6 @@ public class KafraPersistentData {
     KafraPersistentData(VillagerEntity villagerEntity, BlockPos position) {
         this.villagerEntity = villagerEntity;
         this.position = position;
-        this.name = generateRandomString(5) + "-" + position.toString();
+        this.name = "[Kafra Services]";// generateRandomString(5) + "-" + position.toString();
     }
 }

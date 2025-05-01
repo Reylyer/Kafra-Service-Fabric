@@ -1,5 +1,6 @@
 package com.shariyl.kafra;
 
+import com.shariyl.kafra.mixin.BeaconMixin;
 import net.fabricmc.api.ModInitializer;
 import net.fabricmc.fabric.api.event.lifecycle.v1.ServerEntityEvents;
 import net.fabricmc.fabric.api.event.lifecycle.v1.ServerLifecycleEvents;
@@ -10,6 +11,8 @@ import net.fabricmc.fabric.api.event.player.UseEntityCallback;
 import net.minecraft.block.Block;
 import net.minecraft.block.BlockState;
 import net.minecraft.block.Blocks;
+import net.minecraft.block.entity.BeaconBlockEntity;
+import net.minecraft.block.entity.BlockEntity;
 import net.minecraft.component.DataComponentTypes;
 import net.minecraft.component.type.NbtComponent;
 import net.minecraft.entity.EntityType;
@@ -71,6 +74,9 @@ public class KafraService implements ModInitializer {
 
 	public static ArrayList<KafraPersistentData> newlyCreatedKafraPersistentData = new ArrayList<>();
 
+
+	public boolean dirtyLock = false;
+
 	@Override
 	public void onInitialize() {
 		// This code runs as soon as Minecraft is in a mod-load-ready state.
@@ -112,18 +118,27 @@ public class KafraService implements ModInitializer {
 				BlockState state = world.getBlockState(pos);
 
 				if (state.getBlock() == Blocks.BEACON) {  // Check if the block is a beacon
+					BlockEntity be = world.getBlockEntity(pos);
+					if (be instanceof BeaconBlockEntity beacon) {
 
-					boolean hasKafraNearby = !world.getEntitiesByClass(
-                            VillagerEntity.class,
-                            new Box(pos).expand(5), // Check a 5-block radius
-                            villager -> villager.isAlive() && villager.getCustomName() != null
-                                    && villager.getCustomName().getString().startsWith("[Kafra Services]")
-                    ).isEmpty();
+						int level = ((BeaconMixin) beacon).getBeaconLevel();
+						System.out.println("Beacon level: " + level);
 
-					if (!hasKafraNearby) {
-						// spawn Kafra
-						spawnKafra(world, pos);
-						return ActionResult.SUCCESS;  // Block the event to prevent further processing
+						if (level > 0) {
+							// Beacon is active
+							boolean hasKafraNearby = !world.getEntitiesByClass(
+									VillagerEntity.class,
+									new Box(pos).expand(5), // Check a 5-block radius
+									villager -> villager.isAlive() && villager.getCustomName() != null
+											&& villager.getCustomName().getString().startsWith("[Kafra Services]")
+							).isEmpty();
+
+							if (!hasKafraNearby) {
+								// spawn Kafra
+								spawnKafra(world, pos);
+								return ActionResult.SUCCESS;  // Block the event to prevent further processing
+							}
+						}
 					}
 				}
 			}
@@ -135,21 +150,40 @@ public class KafraService implements ModInitializer {
 
 		UseEntityCallback.EVENT.register((player, world, hand, entity, hitResult) -> {
 			if (!world.isClient()) {
-				LOGGER.warn("Interacting with " + entity.getName() );
-				ItemStack stack = player.getStackInHand(hand);
-
-				if (stack.getItem() == Items.NAME_TAG && stack.getCustomName() != null) {
-					KafraService.LOGGER.warn("Using custom name tag on entiity skippng");
+				if (dirtyLock) {
+					dirtyLock = false;
 					return ActionResult.PASS;
 				}
 
-				LOGGER.warn("Kafra collection size: " + kafraEntities.size());
+				ItemStack stack = player.getStackInHand(hand);
 
 				var contains = kafraEntities.stream().anyMatch(x -> x.villagerEntity == entity);
 				if (contains) {
-					LOGGER.warn("Interacting with Kafra Service");
-
 					var thisKafraEntity = (VillagerEntity) entity;
+
+					if (stack.getItem() == Items.NAME_TAG && stack.getCustomName() != null) {
+
+						boolean isKafra = KafraService.kafraEntities.stream()
+								.anyMatch(kafra -> kafra.villagerEntity == thisKafraEntity);
+						if (isKafra) {
+							// Set custom name manually
+							String originalName = stack.getName().getString();
+							String newName = "[Kafra Services] " + originalName;
+
+							thisKafraEntity.setCustomName(Text.of(newName));
+
+							var kafraPersistentData = getKafraPersistentData(thisKafraEntity);
+
+							kafraPersistentData.name = newName;
+
+							// Consume Name Tag unless creative
+							if (!player.getAbilities().creativeMode) {
+								stack.decrement(1);
+							}
+						}
+						dirtyLock = true;
+						return ActionResult.PASS;
+					}
 
 					TradeOfferList tradeOffers = new TradeOfferList();
 
@@ -160,8 +194,6 @@ public class KafraService implements ModInitializer {
 						// Don't trade teleportation to yourself
 						if (otherKafra.villagerEntity == thisKafraEntity) continue;
 
-						LOGGER.warn("GENERATING TELEPORT LIST");
-
 						// Calculate distance
 						double dx = thisKafraPos.x - otherKafra.position.getX();
 						double dz = thisKafraPos.z - otherKafra.position.getZ();
@@ -170,8 +202,8 @@ public class KafraService implements ModInitializer {
 						// Convert to chunk distance
 						int chunkDistance = (int) (distance / 16.0);
 
-						// Price: chunkDistance / 5, ceiled
-						int price = (int) Math.ceil(chunkDistance / 5.0);
+						// Price: chunkDistance / 15, ceiled
+						int price = (int) Math.ceil(chunkDistance / 15.0);
 						if (price < 1) price = 1;  // Minimum 1 emerald maybe?
 
 						// Create the trade offer
@@ -193,27 +225,23 @@ public class KafraService implements ModInitializer {
 
 					}
 
-					LOGGER.warn("GIVING OFFERS");
 					// Set the villager's trades
 					thisKafraEntity.setOffers(tradeOffers);
 
-					LOGGER.warn("KAFRA NAME:" + thisKafraEntity.getDisplayName());
-
 					thisKafraEntity.setCustomer(player);
 					thisKafraEntity.sendOffers(player, thisKafraEntity.getDisplayName(), thisKafraEntity.getVillagerData().level());
-					LOGGER.warn("OFFERS SENT");
 				}
 			}
 
-			LOGGER.warn("PASSING EVENT TO NEXT HANDLER");
-			return ActionResult.SUCCESS;  // Allow normal behavior for other interactions
+			dirtyLock = true;
+			return ActionResult.PASS;  // Allow normal behavior for other interactions
 		});
 
-//		ServerTickEvents.END_SERVER_TICK.register(server -> {
-//			kafraEntities.forEach(data -> {
-//				data.villagerEntity.setPosition(new Vec3d(data.position.getX(), data.position.getY(), data.position.getZ()));
-//			});
-//		});
+		ServerTickEvents.END_SERVER_TICK.register(server -> {
+			kafraEntities.forEach(data -> {
+				data.villagerEntity.setCustomName(Text.literal(data.name));
+			});
+		});
 
 	}
 
