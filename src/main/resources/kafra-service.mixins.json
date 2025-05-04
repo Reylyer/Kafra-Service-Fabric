@@ -3,6 +3,8 @@
   "package": "com.shariyl.kafra.mixin",
   "compatibilityLevel": "JAVA_21",
   "mixins": [
+    "BeaconMixin",
+    "EmeraldCurrencyMixin",
     "KafraAfterTradeMixin",
     "KafraServicesNamingMixin"
   ],

@@ -77,6 +77,31 @@ public class KafraService implements ModInitializer {
 
 	public boolean dirtyLock = false;
 
+	public static BlockPos findNearestBeacon(World world, BlockPos origin, int searchRadius) {
+		BlockPos closestBeacon = null;
+		double closestDistanceSq = Double.MAX_VALUE;
+
+		BlockPos.Mutable mutable = new BlockPos.Mutable();
+
+		for (int x = -searchRadius; x <= searchRadius; x++) {
+			for (int y = -searchRadius; y <= searchRadius; y++) {
+				for (int z = -searchRadius; z <= searchRadius; z++) {
+					mutable.set(origin.getX() + x, origin.getY() + y, origin.getZ() + z);
+					BlockState state = world.getBlockState(mutable);
+					if (state.getBlock() == Blocks.BEACON) {
+						double distSq = mutable.getSquaredDistance(origin);
+						if (distSq < closestDistanceSq) {
+							closestDistanceSq = distSq;
+							closestBeacon = mutable.toImmutable(); // copy the position
+						}
+					}
+				}
+			}
+		}
+
+		return closestBeacon; // null if none found
+	}
+
 	@Override
 	public void onInitialize() {
 		// This code runs as soon as Minecraft is in a mod-load-ready state.
@@ -94,7 +119,8 @@ public class KafraService implements ModInitializer {
 					if (kafraIntersect == null) {
 						KafraPersistentData kafraPersistentData = new KafraPersistentData(
 								villager,
-								pos
+								pos,
+								villager.getCustomName().getString()
 						);
 						kafraEntities.add(
 								kafraPersistentData
@@ -189,6 +215,19 @@ public class KafraService implements ModInitializer {
 
 					var thisKafraPos = thisKafraEntity.getPos();
 
+					// calculate discount
+					var blockPos = new BlockPos((int) thisKafraPos.x, (int) thisKafraPos.y, (int) thisKafraPos.z);
+					var beaconPos = findNearestBeacon(world, blockPos, 5);
+
+					BlockEntity blockEntity = world.getBlockEntity(beaconPos);
+					double discountLevelFactor = 1;
+
+					if (blockEntity instanceof BeaconBlockEntity beacon) {
+						int beaconLevel = ((BeaconMixin) beacon).getBeaconLevel();
+
+						discountLevelFactor = 1.0f - (beaconLevel - 1) * (0.5f / 3.0f);
+					}
+
 					// Create the trade offer
 					for (KafraPersistentData otherKafra : kafraEntities) {
 						// Don't trade teleportation to yourself
@@ -203,7 +242,8 @@ public class KafraService implements ModInitializer {
 						int chunkDistance = (int) (distance / 16.0);
 
 						// Price: chunkDistance / 15, ceiled
-						int price = (int) Math.ceil(chunkDistance / 15.0);
+						int price = (int) Math.ceil(chunkDistance / 15.0 * discountLevelFactor);
+
 						if (price < 1) price = 1;  // Minimum 1 emerald maybe?
 
 						// Create the trade offer

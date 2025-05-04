@@ -30,10 +30,31 @@ public class KafraPersistentData {
         return randomString.toString();  // Convert StringBuilder to string and return
     }
 
+    // Class to simplify serialization
+    public static class SerializableKafraData {
+        public String name;
+        public int x, y, z;
+
+        public SerializableKafraData(String name, BlockPos pos) {
+            this.name = name;
+            this.x = pos.getX();
+            this.y = pos.getY();
+            this.z = pos.getZ();
+        }
+    }
+
+    public SerializableKafraData toSerializable() {
+        return new SerializableKafraData(name, position);
+    }
+
     // in the future will add name for the pylon as identifier
-    KafraPersistentData(VillagerEntity villagerEntity, BlockPos position) {
+    KafraPersistentData(VillagerEntity villagerEntity, BlockPos position, String name) {
         this.villagerEntity = villagerEntity;
         this.position = position;
-        this.name = "[Kafra Services]";// generateRandomString(5) + "-" + position.toString();
+        this.name = name;// generateRandomString(5) + "-" + position.toString();
+    }
+
+    KafraPersistentData(VillagerEntity villagerEntity, BlockPos position) {
+        this(villagerEntity, position, "[Kafra Services]");
     }
 }

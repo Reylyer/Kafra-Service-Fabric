@@ -19,11 +19,13 @@ import org.jetbrains.annotations.Nullable;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.spongepowered.asm.mixin.Mixin;
+import org.spongepowered.asm.mixin.Unique;
 import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 
 import java.util.List;
+import java.util.Objects;
 import java.util.Optional;
 
 @Mixin(MerchantEntity.class)
@@ -77,15 +79,22 @@ public class KafraAfterTradeMixin {
                 }
             }
         }
-
-
     }
 
     // Helper method to check if the ItemStack is involved in the trade offer
+    @Unique
     private boolean isItemInTrade(TradeOffer offer, ItemStack stack) {
         // Check if the selling item matches the stack
         var itemSelling = offer.getSellItem();
-        return ItemStack.areItemsEqual(stack, itemSelling);// Return false if no match is found
+
+        var sellingLabel = Objects.requireNonNull(itemSelling.getCustomName()).getString();
+        var buyingLabel = Objects.requireNonNull(stack.getCustomName()).getString();
+
+        KafraService.LOGGER.warn(sellingLabel);
+        KafraService.LOGGER.warn(buyingLabel);
+
+        return Objects.equals(sellingLabel, buyingLabel);
+//        return ItemStack.areItemsEqual(stack, itemSelling);// Return false if no match is found
     }
 
     private int playerEmeraldCount(PlayerEntity player) {
